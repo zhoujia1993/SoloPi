@@ -44,6 +44,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.alipay.hulu.R;
+import com.alipay.hulu.activity.SettingsActivity;
 import com.alipay.hulu.common.application.LauncherApplication;
 import com.alipay.hulu.common.utils.ContextUtil;
 import com.alipay.hulu.common.utils.GlideApp;
@@ -200,6 +201,7 @@ public class DialogUtils {
             public void run() {
                 ProgressDialog progressDialog = new ProgressDialog(context, R.style.SimpleDialogTheme);
                 progressDialog.setMessage(str);
+                progressDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
                 progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
                 progressDialog.show();
                 dialogs[0] = progressDialog;
@@ -533,9 +535,9 @@ public class DialogUtils {
                 DisplayMetrics metrics = new DisplayMetrics();
                 wm.getDefaultDisplay().getMetrics(metrics);
 
-                // 高度400dp, 宽度260dp
+                // 高度400dp, 宽度260dpa
                 int pix = ContextUtil.dip2px(context, 400);
-                int width = ContextUtil.dip2px(context, 260);
+                int width = ContextUtil.dip2px(context, 270);
                 if (metrics.heightPixels < pix) {
                     if (metrics.widthPixels < width) {
                         dialog.getWindow().setLayout(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT);

@@ -16,12 +16,18 @@
 package com.alipay.hulu.common.utils.activity;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityService;
+import android.annotation.TargetApi;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.LocaleList;
 import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -34,7 +40,6 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.alipay.hulu.common.R;
 import com.alipay.hulu.common.application.LauncherApplication;
@@ -44,17 +49,26 @@ import com.alipay.hulu.common.injector.param.SubscribeParamEnum;
 import com.alipay.hulu.common.service.SPService;
 import com.alipay.hulu.common.tools.BackgroundExecutor;
 import com.alipay.hulu.common.tools.CmdTools;
+import com.alipay.hulu.common.utils.Callback;
 import com.alipay.hulu.common.utils.ContextUtil;
 import com.alipay.hulu.common.utils.LogUtil;
+import com.alipay.hulu.common.utils.MiscUtil;
 import com.alipay.hulu.common.utils.PermissionUtil;
 import com.alipay.hulu.common.utils.StringUtil;
 import com.android.permission.FloatWindowManager;
+import com.android.permission.rom.MiuiUtils;
+import com.android.permission.rom.RomUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Created by qiaoruikai on 2018/10/15 5:20 PM.
@@ -76,6 +90,7 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
     public static final int PERMISSION_RECORD = 7;
     public static final int PERMISSION_ANDROID = 8;
     public static final int PERMISSION_DYNAMIC = 9;
+    public static final int PERMISSION_BACKGROUND = 10;
 
     public static volatile boolean runningStatus = false;
 
@@ -92,6 +107,8 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
     private TextView positiveBtnText;
     private LinearLayout negativeButton;
     private TextView negativeBtnText;
+    private LinearLayout thirdButton;
+    private TextView thirdBtnText;
     private int currentIdx;
     private int totalIdx;
 
@@ -106,31 +123,31 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
     /**
      * 权限名称映射表
      */
-    public static final Map<String, String> PERMISSION_NAMES = new HashMap<String, String>() {
+    public static Map<String, Integer> PERMISSION_NAMES = new HashMap<String, Integer>() {
         {
-            put(Manifest.permission.READ_CALENDAR, "读取日历");
-            put(Manifest.permission.WRITE_CALENDAR, "写入日历");
-            put(Manifest.permission.CAMERA, "相机");
-            put(Manifest.permission.READ_CONTACTS, "读取联系人");
-            put(Manifest.permission.WRITE_CONTACTS, "写入联系人");
-            put(Manifest.permission.GET_ACCOUNTS, "获取账户");
-            put(Manifest.permission.ACCESS_FINE_LOCATION, "获取精确定位");
-            put(Manifest.permission.ACCESS_COARSE_LOCATION, "获取粗略定位");
-            put(Manifest.permission.RECORD_AUDIO, "录音");
-            put(Manifest.permission.READ_PHONE_STATE, "读取电话状态");
-            put(Manifest.permission.CALL_PHONE, "拨打电话");
-            put(Manifest.permission.READ_CALL_LOG, "读取通话记录");
-            put(Manifest.permission.WRITE_CALL_LOG, "写入通话记录");
-            put(Manifest.permission.ADD_VOICEMAIL, "添加语音邮箱");
-            put(Manifest.permission.USE_SIP, "使用SIP");
-            put(Manifest.permission.BODY_SENSORS, "获取传感器数据");
-            put(Manifest.permission.SEND_SMS, "发送短信");
-            put(Manifest.permission.RECEIVE_SMS, "接收短信");
-            put(Manifest.permission.READ_SMS, "获取短信信息");
-            put(Manifest.permission.RECEIVE_WAP_PUSH, "接收Wap Push");
-            put(Manifest.permission.RECEIVE_MMS, "接收MMS");
-            put(Manifest.permission.READ_EXTERNAL_STORAGE, "读取外部存储");
-            put(Manifest.permission.WRITE_EXTERNAL_STORAGE, "写入外部存储");
+            put(Manifest.permission.READ_CALENDAR, R.string.permission__read_calendar);
+            put(Manifest.permission.WRITE_CALENDAR, R.string.permission__write_calendar);
+            put(Manifest.permission.CAMERA, R.string.permission__camera);
+            put(Manifest.permission.READ_CONTACTS, R.string.permission__read_contacts);
+            put(Manifest.permission.WRITE_CONTACTS, R.string.permission__write_contacts);
+            put(Manifest.permission.GET_ACCOUNTS, R.string.permission__get_accounts);
+            put(Manifest.permission.ACCESS_FINE_LOCATION, R.string.permission__access_fine_location);
+            put(Manifest.permission.ACCESS_COARSE_LOCATION, R.string.permission__access_coarse_location);
+            put(Manifest.permission.RECORD_AUDIO, R.string.permission__record_audio);
+            put(Manifest.permission.READ_PHONE_STATE, R.string.permission__read_phone_state);
+            put(Manifest.permission.CALL_PHONE, R.string.permission__call_phone);
+            put(Manifest.permission.READ_CALL_LOG, R.string.permission__read_call_log);
+            put(Manifest.permission.WRITE_CALL_LOG, R.string.permission__write_call_log);
+            put(Manifest.permission.ADD_VOICEMAIL, R.string.permission__add_voicemail);
+            put(Manifest.permission.USE_SIP, R.string.permission__use_sip);
+            put(Manifest.permission.BODY_SENSORS, R.string.permission__body_sensors);
+            put(Manifest.permission.SEND_SMS, R.string.permission__send_sms);
+            put(Manifest.permission.RECEIVE_SMS, R.string.permission__receive_sms);
+            put(Manifest.permission.READ_SMS, R.string.permission__read_sms);
+            put(Manifest.permission.RECEIVE_WAP_PUSH, R.string.permission__receive_wap_push);
+            put(Manifest.permission.RECEIVE_MMS, R.string.permission__receive_mms);
+            put(Manifest.permission.READ_EXTERNAL_STORAGE, R.string.permission__read_external_storage);
+            put(Manifest.permission.WRITE_EXTERNAL_STORAGE, R.string.permission__write_external_storage);
 
         }
     };
@@ -194,11 +211,14 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
         positiveBtnText = (TextView) positiveButton.getChildAt(0);
         negativeButton = (LinearLayout) findViewById(R.id.permission_negative_button);
         negativeBtnText = (TextView) negativeButton.getChildAt(0);
+        thirdButton = (LinearLayout) findViewById(R.id.permission_third_button);
+        thirdBtnText = (TextView) thirdButton.getChildAt(0);
     }
 
     private void initControl() {
         positiveButton.setOnClickListener(this);
         negativeButton.setOnClickListener(this);
+        thirdButton.setOnClickListener(this);
 
         currentPermissionIdx = getIntent().getIntExtra(PERMISSION_IDX_KEY, -1);
         groupPermissions();
@@ -233,6 +253,9 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
                     break;
                 case "screenRecord":
                     group = PERMISSION_RECORD;
+                    break;
+                case "background":
+                    group = PERMISSION_BACKGROUND;
                     break;
                 default:
                     if (permission.startsWith("Android=")) {
@@ -332,6 +355,11 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
                 break;
             case PERMISSION_DYNAMIC:
                 if (!processDynamicPermission(permission)) {
+                    return;
+                }
+                break;
+            case PERMISSION_BACKGROUND:
+                if (!processBackgroundPermission()) {
                     return;
                 }
                 break;
@@ -498,7 +526,7 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
      */
     private boolean processUsagePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && !PermissionUtil.isUsageStatPermissionOn(this)) {
-            showAction(StringUtil.getString(R.string.device_usage_permission), getString(R.string.permission__i_open), new Runnable() {
+            showAction(StringUtil.getString(R.string.device_usage_permission), getString(R.string.permission__i_grant), new Runnable() {
                 @Override
                 public void run() {
                     if (PermissionUtil.isUsageStatPermissionOn(PermissionDialogActivity.this)) {
@@ -529,29 +557,99 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
 
         // 没有注册上AccessibilityService，需要开辅助功能
         if (service.getMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, null) == null) {
-            showAction(StringUtil.getString(R.string.accessibility_permission), getString(R.string.permission__i_open), new Runnable() {
+            BackgroundExecutor.execute(new Runnable() {
                 @Override
                 public void run() {
-                    if (service.getMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, null) != null) {
-                        processedAction();
-                    } else {
-                        LauncherApplication.toast(R.string.permission__valid_fail);
+                    final CountDownLatch latch = new CountDownLatch(1);
+                    InjectorService.g().waitForMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, new Callback<AccessibilityService>() {
+                        @Override
+                        public void onResult(AccessibilityService item) {
+                            latch.countDown();
+                        }
+
+                        @Override
+                        public void onFailed() {
+                            latch.countDown();
+                        }
+                    });
+                    CmdTools.execHighPrivilegeCmd("settings put secure enabled_accessibility_services com.alipay.hulu/com.alipay.hulu.shared.event.accessibility.AccessibilityServiceImpl");
+                    CmdTools.execHighPrivilegeCmd("settings put secure accessibility_enabled 1");
+
+                    try {
+                        latch.await(2000, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        LogUtil.e(TAG, "Catch java.lang.InterruptedException: " + e.getMessage(), e);
                     }
-                }
-            }, getString(R.string.constant__confirm), new Runnable() {
-                @Override
-                public void run() {
-                    Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-                    // | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                    startActivityForResult(intent, ACCESSIBILITY_REQUEST);
+
+                    // 可能是因为UIAutomator、Instrument等工具影响，清理掉
+                    if (InjectorService.g().getMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, AccessibilityService.class) == null) {
+                        showAction(getString(R.string.permission__try_kil_uiautomator), getString(R.string.constant__cancel), new Runnable() {
+                            @Override
+                            public void run() {
+                                finish();
+                                PermissionUtil.onPermissionResult(currentPermissionIdx, false, "User cancel");
+                            }
+                        });
+                        restartAccessibilityService();
+                    }
+                    LauncherApplication.getInstance().showToast(getString(R.string.permission__open_accessibility));
+
+                    // 等2秒，确定消息发过来了
+                    MiscUtil.sleep(2000);
+
+                    LauncherApplication.getInstance().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (service.getMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, null) != null) {
+                                processedAction();
+                            } else {
+                                processAccessibilityByHand(injectorService);
+                            }
+                        }
+                    });
                 }
             });
+
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * 手动处理辅助功能问题
+     * @param service
+     */
+    private void processAccessibilityByHand(final InjectorService service) {
+        showAction(StringUtil.getString(R.string.accessibility_permission), getString(R.string.permission__i_grant), new Runnable() {
+            @Override
+            public void run() {
+                if (service.getMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, null) != null) {
+                    processedAction();
+                } else {
+                    LauncherApplication.toast(R.string.permission__valid_fail);
+                }
+            }
+        }, getString(R.string.constant__confirm), new Runnable() {
+            @Override
+            public void run() {
+                Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                // | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivityForResult(intent, ACCESSIBILITY_REQUEST);
+            }
+        }, getString(R.string.permission__force_stop), new Runnable() {
+            @Override
+            public void run() {
+                BackgroundExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        CmdTools.execHighPrivilegeCmd("am force-stop com.alipay.hulu && am force-stop com.alipay.hulu");
+                    }
+                });
+            }
+        });
     }
 
     /**
@@ -586,7 +684,7 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
                 startActivityForResult(intent, MEDIA_PROJECTION_REQUEST);
             }
 
-            showAction(StringUtil.getString(R.string.record_screen_permission), getString(R.string.permission__i_permit), new Runnable() {
+            showAction(StringUtil.getString(R.string.record_screen_permission), getString(R.string.permission__i_grant), new Runnable() {
                 @Override
                 public void run() {
                     if (injectorService.getMessage(Constant.EVENT_RECORD_SCREEN_CODE, Intent.class) != null) {
@@ -639,6 +737,132 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
         return true;
     }
 
+    /**
+     * 处理后台弹出界面权限
+     * @return
+     */
+    private boolean processBackgroundPermission() {
+        if (RomUtils.checkIsMiuiRom()) {
+            final String content = getString(R.string.permission__open_background_permission);
+            if (!SPService.getBoolean(content, false)) {
+                showAction(content, getString(R.string.permission__opened), new Runnable() {
+                    @Override
+                    public void run() {
+                        SPService.putBoolean(content, true);
+                        processedAction();
+                    }
+                }, getString(R.string.permission__go_to_open), new Runnable() {
+                    @Override
+                    public void run() {
+                        MiuiUtils.applyMiuiPermission(PermissionDialogActivity.this);
+                    }
+                });
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+
+    /**
+     * 关闭Instrument和UIAutomator
+     */
+    public static void cleanInstrumentationAndUiAutomator() {
+        String allActions = CmdTools.execHighPrivilegeCmd("ps -ef | grep shell");
+        LogUtil.i(TAG, "Let me see::::" + allActions);
+
+        // 关闭Instrument
+        String result = CmdTools.execHighPrivilegeCmd("pm list instrumentation");
+        String[] lines = StringUtil.split(result, "\n");
+        Pattern pattern = Pattern.compile("\\(target=(.*)\\)");
+        String targetApp = InjectorService.g().getMessage(SubscribeParamEnum.APP, String.class);
+
+        for(String line: lines) {
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()) {
+                String instPkg = matcher.group(1);
+                if (StringUtil.equals(instPkg, "com.alipay.hulu")) {
+                    continue;
+                }
+                // 不杀目标应用
+                if (StringUtil.equals(instPkg, targetApp)) {
+                    continue;
+                }
+
+                LauncherApplication.getInstance().showToast(StringUtil.getString(R.string.permission__kill_app, instPkg));
+                LogUtil.i(TAG, "Find instrumentation package and killing \"" + instPkg + "\"");
+                String exeRes = CmdTools.execHighPrivilegeCmd("am force-stop " + instPkg);
+                LogUtil.i(TAG, "force-stop result:::" + exeRes);
+                CmdTools.execHighPrivilegeCmd("am force-stop " + instPkg);
+            }
+        }
+
+        // 关闭UIAutomator
+        String[] pids = CmdTools.ps("uiautomator");
+        for (String pid: pids) {
+            LogUtil.i(TAG, "Get uiautomator pid line: " + pid);
+            String[] columns = pid.split("\\s+");
+            if (columns.length > 2) {
+                pid = columns[1];
+                CmdTools.execHighPrivilegeCmd("kill " + pid);
+            }
+        }
+
+        // 杀掉Monkey
+        pids = CmdTools.ps("monkey");
+        for (String pid: pids) {
+            // 只杀掉shell用户开启的monkey
+            if (!StringUtil.contains(pid, "shell")) {
+                continue;
+            }
+            LogUtil.i(TAG, "Get Monkey pid line: " + pid);
+            String[] columns = pid.split("\\s+");
+            if (columns.length > 2) {
+                pid = columns[1];
+                CmdTools.execHighPrivilegeCmd("kill " + pid);
+            }
+        }
+    }
+
+
+    /**
+     * 重启辅助功能
+     */
+    private void restartAccessibilityService() {
+        LauncherApplication.getInstance().showToast(getString(R.string.permission__restarting_accessibility));
+        // 关uiautomator
+        cleanInstrumentationAndUiAutomator();
+
+        // 提前点准备
+        final CountDownLatch latch = new CountDownLatch(1);
+        InjectorService.g().waitForMessage(SubscribeParamEnum.ACCESSIBILITY_SERVICE, new Callback<AccessibilityService>() {
+            @Override
+            public void onResult(AccessibilityService item) {
+                latch.countDown();
+            }
+
+            @Override
+            public void onFailed() {
+                latch.countDown();
+            }
+        });
+
+        // 切换回TalkBack
+        CmdTools.execHighPrivilegeCmd("settings put secure enabled_accessibility_services com.android.talkback/com.google.android.marvin.talkback.TalkBackService");
+        // 等2秒
+        MiscUtil.sleep(2000);
+
+        CmdTools.execHighPrivilegeCmd("settings put secure enabled_accessibility_services com.alipay.hulu/com.alipay.hulu.shared.event.accessibility.AccessibilityServiceImpl");
+
+        // 等待辅助功能重新激活
+        try {
+            latch.await(20000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            LogUtil.e(TAG, "Catch java.lang.InterruptedException: " + e.getMessage(), e);
+        }
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -663,9 +887,9 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
             if (ungrantedPermissions != null && ungrantedPermissions.size() > 0) {
                 List<String> mappedName = new ArrayList<>();
                 for (String dynPermission: ungrantedPermissions) {
-                    String mapName = PERMISSION_NAMES.get(dynPermission);
+                    Integer mapName = PERMISSION_NAMES.get(dynPermission);
                     if (mapName != null) {
-                        mappedName.add(mapName);
+                        mappedName.add(StringUtil.getString(mapName));
                     } else {
                         mappedName.add(dynPermission);
                     }
@@ -705,19 +929,31 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
 
     /**
      * 显示操作框
+     * @see #showAction(String, String, Runnable, String, Runnable, String, Runnable)
+     */
+    private void showAction(final String message, final String positiveText, final Runnable positiveAct,
+                            final String negativeText, final Runnable negativeAct) {
+        showAction(message, positiveText, positiveAct, negativeText, negativeAct, null, null);
+    }
+
+    /**
+     * 显示操作框
      * @param message 显示文案
      * @param positiveText 确定文案
      * @param positiveAct 确定动作
      * @param negativeText 取消文案
      * @param negativeAct 取消动作
+     * @param thirdText 第三操作文案
+     * @param thirdAct 第三操作
      */
     private void showAction(final String message, final String positiveText, final Runnable positiveAct,
-                            final String negativeText, final Runnable negativeAct) {
+                            final String negativeText, final Runnable negativeAct, final String thirdText, final Runnable thirdAct) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 positiveAction = positiveAct;
                 negativeAction = negativeAct;
+                thirdAction = thirdAct;
 
                 progressBar.setVisibility(View.GONE);
                 actionLayout.setVisibility(View.VISIBLE);
@@ -733,6 +969,13 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
                     negativeBtnText.setText(negativeText);
                 } else {
                     negativeButton.setVisibility(View.GONE);
+                }
+
+                if (!StringUtil.isEmpty(thirdText)) {
+                    thirdButton.setVisibility(View.VISIBLE);
+                    thirdBtnText.setText(thirdText);
+                } else {
+                    thirdButton.setVisibility(View.GONE);
                 }
             }
         });
@@ -764,6 +1007,7 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
 
     private Runnable positiveAction;
     private Runnable negativeAction;
+    private Runnable thirdAction;
 
     @Override
     public void onClick(View v) {
@@ -774,6 +1018,10 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
         } else if (v == negativeButton) {
             if (negativeAction != null) {
                 negativeAction.run();
+            }
+        } else if (v == thirdButton) {
+            if (thirdAction != null) {
+                thirdAction.run();
             }
         }
     }
@@ -808,6 +1056,27 @@ public class PermissionDialogActivity extends Activity implements View.OnClickLi
 
             processedAction();
         }
+    }
+
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            newBase = updateResources(newBase);
+        }
+        super.attachBaseContext(newBase);
+    }
+
+    @TargetApi(Build.VERSION_CODES.N)
+    private static Context updateResources(Context context) {
+
+        Resources resources = context.getResources();
+        Locale locale = LauncherApplication.getInstance().getLanguageLocale();
+
+        Configuration configuration = resources.getConfiguration();
+        configuration.setLocale(locale);
+        configuration.setLocales(new LocaleList(locale));
+        return context.createConfigurationContext(configuration);
     }
 
     /**

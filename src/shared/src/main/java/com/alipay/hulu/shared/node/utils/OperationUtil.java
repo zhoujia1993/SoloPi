@@ -15,11 +15,13 @@
  */
 package com.alipay.hulu.shared.node.utils;
 
-import android.graphics.Point;
+import android.content.Context;
 import android.graphics.Rect;
+import android.util.DisplayMetrics;
+import android.view.WindowManager;
 
+import com.alipay.hulu.common.application.LauncherApplication;
 import com.alipay.hulu.common.tools.CmdTools;
-import com.alipay.hulu.common.utils.DeviceInfoUtil;
 import com.alipay.hulu.common.utils.LogUtil;
 import com.alipay.hulu.common.utils.MiscUtil;
 import com.alipay.hulu.common.utils.StringUtil;
@@ -85,6 +87,7 @@ public class OperationUtil {
         map.put("我知道啦", 4);
         map.put("立即删除", 5);
         map.put("清除", 5);
+        map.put("跳过", 5);
         map.put("立即清理", 6);
         map.put("忽略风险", 7);
         alertContentMap = Collections.unmodifiableMap(map);
@@ -133,8 +136,13 @@ public class OperationUtil {
             AbstractNodeTree operationNode;
             int pos = 0;
 
+            DisplayMetrics dm = new DisplayMetrics();
+            ((WindowManager) LauncherApplication.getInstance().getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(dm);
+            int height = dm.heightPixels;
+            int width = dm.widthPixels;
             int scrollCount = 0;
             do {
+                service.invalidRoot();
                 AbstractNodeTree tmpRoot = service.getCurrentRoot();
                 operationNode = OperationNodeLocator.findAbstractNode(tmpRoot, node);
 
@@ -148,28 +156,23 @@ public class OperationUtil {
                 if (!(operationNode instanceof CaptureTree)) {
                     // 判断下是否在屏幕内
                     Rect bound = operationNode.getNodeBound();
-                    Point screenSize = DeviceInfoUtil.realScreenSize;
-                    LogUtil.d(TAG, "控件空间属性：%s, 屏幕属性：%s",  bound, screenSize);
+                    LogUtil.d(TAG, "控件空间属性：%s, 屏幕属性：%s",  bound, dm);
                     if (bound.bottom <= 5) {
-                        CmdTools.execHighPrivilegeCmd(MiscUtil.generateSwipeCmd(screenSize.x / 2, screenSize.y / 5, screenSize.x / 2, screenSize.y / 2, 1000));
+                        service.doSomeAction(new OperationMethod(PerformActionEnum.GLOBAL_SCROLL_TO_BOTTOM), null);
                         MiscUtil.sleep(2500);
                         scrollCount ++;
-                        service.invalidRoot();
-                    } else if (bound.top >= screenSize.y - 5) {
-                        CmdTools.execHighPrivilegeCmd(MiscUtil.generateSwipeCmd(screenSize.x / 2, screenSize.y / 5 * 4, screenSize.x / 2, screenSize.y / 2, 1000));
+                    } else if (bound.top >= height - 5) {
+                        service.doSomeAction(new OperationMethod(PerformActionEnum.GLOBAL_SCROLL_TO_TOP), null);
                         MiscUtil.sleep(2500);
                         scrollCount ++;
-                        service.invalidRoot();
                     } else if (bound.centerX() <= 5) {
-                        CmdTools.execHighPrivilegeCmd(MiscUtil.generateSwipeCmd(screenSize.x / 5, screenSize.y / 2, screenSize.x / 2, screenSize.y / 2, 1000));
+                        service.doSomeAction(new OperationMethod(PerformActionEnum.GLOBAL_SCROLL_TO_RIGHT), null);
                         MiscUtil.sleep(2500);
                         scrollCount ++;
-                        service.invalidRoot();
-                    } else if (bound.centerX() >= screenSize.x - 5) {
-                        CmdTools.execHighPrivilegeCmd(MiscUtil.generateSwipeCmd(screenSize.x / 5 * 4, screenSize.y / 2, screenSize.x / 2, screenSize.y / 2, 1000));
+                    } else if (bound.centerX() >= width - 5) {
+                        service.doSomeAction(new OperationMethod(PerformActionEnum.GLOBAL_SCROLL_TO_LEFT), null);
                         MiscUtil.sleep(2500);
                         scrollCount ++;
-                        service.invalidRoot();
                     } else {
                         pos = 1;
                     }
@@ -222,6 +225,20 @@ public class OperationUtil {
      * @return
      */
     public static AbstractNodeTree findAbstractNode(OperationNode node, OperationService service, List<String> prepareActions) {
+
+        AbstractNodeTree tmpRoot = null;
+        try {
+            service.invalidRoot();
+            tmpRoot = service.getCurrentRoot();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 拿不到root
+        if (tmpRoot == null) {
+            return null;
+        }
+
         AbstractNodeTree targetNode = null;
 
         // 两次处理弹窗

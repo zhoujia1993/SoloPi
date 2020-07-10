@@ -45,6 +45,7 @@ public enum PerformActionEnum {
     SCROLL_TO_TOP("scrollToTop", R.string.action_scroll_to_top, 1, 0, R.drawable.dialog_action_drawable_scroll_down, SCROLL_PARAMS),
     SCROLL_TO_RIGHT("scrollToRight", R.string.action__scroll_to_right, 1, 0, R.drawable.dialog_action_drawable_scroll_left, SCROLL_PARAMS),
     SCROLL_TO_LEFT("scrollToLeft", R.string.action__scroll_to_left, 1, 0, R.drawable.dialog_action_drawable_scroll_right, SCROLL_PARAMS),
+    GESTURE("gesture", R.string.action__gesture, 1, 0, R.drawable.dialog_action_drawable_gesture, GESTURE_PARAMS),
     ASSERT("assert", R.string.action__assert, 1, 0, R.drawable.dialog_action_drawable_assert, ASSERT_PARAMS),
     SLEEP_UNTIL("sleepUntil", R.string.action__sleep_until, 1, 0, R.drawable.dialog_action_drawable_sleep, SLEEP_UNTIL_PARAMS),
     OTHER_NODE("otherNode", R.string.action__other_node, 1, 0, R.drawable.dialog_action_drawable_extra, OTHER_PARAMS),
@@ -59,8 +60,12 @@ public enum PerformActionEnum {
     GLOBAL_SCROLL_TO_TOP("globalScrollToTop", R.string.action__global_scroll_up, 2, 0, R.drawable.dialog_action_drawable_scroll_down),
     GLOBAL_SCROLL_TO_RIGHT("globalScrollToRight", R.string.action__global_scroll_right, 2, 0, R.drawable.dialog_action_drawable_scroll_left),
     GLOBAL_SCROLL_TO_LEFT("globalScrollToLeft", R.string.action__global_scroll_left, 2, 0, R.drawable.dialog_action_drawable_scroll_right),
+    GLOBAL_PINCH_OUT("globalPinchOut", R.string.action__pinch_out, 2, 0, R.drawable.dialog_action_drawable_pinch_out),
+    GLOBAL_PINCH_IN("globalPinchIn", R.string.action__pinch_in, 2, 0, R.drawable.dialog_action_drawable_pinch_in),
+    GLOBAL_GESTURE("globalGesture", R.string.action__gesture, 2, 0, R.drawable.dialog_action_drawable_gesture, GESTURE_PARAMS),
     GOTO_INDEX("goToIndex", R.string.action__goto_index, 2, 0, R.drawable.dialog_action_drawable_goto_index),
     CLEAR_DATA("clearData", R.string.action__clear_data, 2, 0, R.drawable.dialog_action_drawable_app_operation),
+    ASSERT_TOAST("assertToast", R.string.action__assert_toast, 2, 0, R.drawable.dialog_action_drawable_assert, ASSERT_PARAMS),
 
     KILL_PROCESS("killProcess", R.string.action__kill_process, 2, 0, R.drawable.dialog_action_drawable_kill_process),
     SLEEP("sleep", R.string.action__sleep, 2, 0, R.drawable.dialog_action_drawable_sleep, SLEEP_PARAMS),
@@ -72,6 +77,7 @@ public enum PerformActionEnum {
     EXECUTE_SHELL("executeShell", R.string.action__exe_shell, 2, 0, R.drawable.dialog_action_drawable_cmdline, SHELL_PARAMS),
 
     PAUSE("pause", R.string.action__pause, 3, 2, R.drawable.dialog_action_drawable_cancel),
+    RESUME("resume", R.string.action__resume, 3, 2, R.drawable.dialog_action_drawable_cancel),
     OTHER_GLOBAL("otherGlobal", R.string.action__other_gloabl, 3, 0, R.drawable.dialog_action_drawable_extra, OTHER_PARAMS),
     FINISH("finish", R.string.action__finish, 4, 0, R.drawable.dialog_action_drawable_finish),
     FOCUS("focus", R.string.action__focus, 0, 0, R.drawable.dialog_action_drawable_long_click),
@@ -82,8 +88,8 @@ public enum PerformActionEnum {
     LET_NODE("letNode", R.string.action__let_node, 1, 1, R.drawable.dialog_action_drawable_variable, LET_PARAMS),
     LET("let", R.string.action__let, 4, 1, R.drawable.dialog_action_drawable_variable, LET_PARAMS),
     LOAD_PARAM("load", R.string.action__load_param, 4, 1, R.drawable.dialog_action_drawable_load_param, LOAD_PARAM_PARAMS),
-    CHECK_NODE("checkNode", R.string.action__check_node, 1, 1, R.drawable.dialog_action_drawable_cancel),
-    CHECK("check", R.string.action__check, 4, 1, R.drawable.dialog_action_drawable_cancel),
+    CHECK_NODE("checkNode", R.string.action__check_node, 1, 1, R.drawable.dialog_action_drawable_check, CHECK_PARAMS),
+    CHECK("check", R.string.action__check, 4, 1, R.drawable.dialog_action_drawable_check, CHECK_PARAMS),
 
     /**
      * 本地模式专用 5

@@ -18,6 +18,7 @@ package com.alipay.hulu.shared.node.action;
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import android.os.Build;
 import android.support.annotation.NonNull;
@@ -29,6 +30,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import com.alipay.hulu.common.application.LauncherApplication;
+import com.alipay.hulu.common.bean.ContinueGesture;
 import com.alipay.hulu.common.injector.InjectorService;
 import com.alipay.hulu.common.injector.param.SubscribeParamEnum;
 import com.alipay.hulu.common.injector.param.Subscriber;
@@ -48,12 +50,13 @@ import com.alipay.hulu.shared.node.OperationService;
 import com.alipay.hulu.shared.node.locater.OperationNodeLocator;
 import com.alipay.hulu.shared.node.tree.AbstractNodeTree;
 import com.alipay.hulu.shared.node.tree.accessibility.AccessibilityNodeProcessor;
-import com.alipay.hulu.shared.node.tree.accessibility.tree.AccessibilityNodeTree;
 import com.alipay.hulu.shared.node.tree.accessibility.AccessibilityProvider;
+import com.alipay.hulu.shared.node.tree.accessibility.tree.AccessibilityNodeTree;
 import com.alipay.hulu.shared.node.tree.capture.CaptureProcessor;
 import com.alipay.hulu.shared.node.tree.capture.CaptureProvider;
 import com.alipay.hulu.shared.node.utils.AppUtil;
 import com.alipay.hulu.shared.node.utils.LogicUtil;
+import com.alipay.hulu.shared.node.utils.NodeTreeUtil;
 import com.alipay.hulu.shared.node.utils.OperationUtil;
 import com.alipay.hulu.shared.node.utils.PrepareUtil;
 import com.android.permission.rom.RomUtils;
@@ -62,8 +65,6 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +90,12 @@ public class OperationExecutor {
     public static final String IS_OVERRIDE_INSTALL_KEY = "isOverrideInstall";
     public static final String PACKAGENAME_KEY = "packageName";
     public static final String GET_NODE_MODE = "descriptorMode";
+    public static final String GESTURE_PATH = "gesturePath";
+    public static final String GESTURE_FILTER = "gestureFilter";
+
+
+    public static final String SCROLL_DISTANCE = "scrollDistance";
+    public static final String SCROLL_TIME = "ScrollTime";
 
     /**
      * 点击操作类型
@@ -342,6 +349,11 @@ public class OperationExecutor {
             return result;
         }
 
+        // 手势操作
+        if (actionEnum == PerformActionEnum.GESTURE) {
+            return performGesture(method, targetNode.getNodeBound(), opContext);
+        }
+
         // send event模式下需要异步点击
         if (currentClickType == CLICK_TYPE_SEND_EVENT && actionEnum == PerformActionEnum.CLICK) {
             final Rect rect = node.getNodeBound();
@@ -430,6 +442,45 @@ public class OperationExecutor {
     }
 
     /**
+     * 执行手势操作
+     * @param method
+     * @param r
+     * @param opContext
+     * @return
+     */
+    private boolean performGesture(OperationMethod method, final Rect r, OperationContext opContext) {
+        if (!executor.supportGesture()) {
+            return false;
+        }
+        try {
+            final List<PointF> gesturePath = JSON.parseArray(method.getParam(GESTURE_PATH), PointF.class);
+            final int gestureFilter = Integer.parseInt(method.getParam(GESTURE_FILTER));
+            // 参数校验
+            if (gesturePath == null || gesturePath.size() < 2 || gestureFilter <= 0) {
+                return false;
+            }
+            opContext.notifyOnFinish(new Runnable() {
+                @Override
+                public void run() {
+                    // 拼接手势操作
+                    PointF start = gesturePath.get(0);
+                    ContinueGesture gesture = new ContinueGesture(r.left + (int) (start.x * r.width()), r.top + (int) (start.y * r.height()));
+                    for (int i = 1; i < gesturePath.size(); i++) {
+                        PointF p = gesturePath.get(i);
+                        gesture.moveTo(r.left + (int) (p.x * r.width()), r.top + (int) (p.y * r.height()), gestureFilter);
+                    }
+
+                    executor.executeGesture(gesture);
+                }
+            });
+            return true;
+        } catch (Exception e) {
+            LogUtil.w(TAG, "process gesture failed", e);
+            return false;
+        }
+    }
+
+    /**
      * 向指定位置强制输入文字
      * @param text
      * @param rect
@@ -440,11 +491,10 @@ public class OperationExecutor {
             public void run() {
                 LogUtil.e(TAG, "Start Input");
                 try {
-                    String defaultIme = executor.executeCmdSync("settings get secure default_input_method");
-                    executor.executeCmdSync("settings put secure default_input_method com.alipay.hulu/.tools.AdbIME", 0);
-                    executor.executeCmdSync("input tap " + rect.centerX() + " " + rect.centerY(), 0);
+                    CmdTools.switchToIme("com.alipay.hulu/.tools.AdbIME");
+                    executor.executeClick(rect.centerX(), rect.centerY());
                     MiscUtil.sleep(1500);
-                    executor.executeCmdSync("am broadcast -a ADB_INPUT_TEXT --es msg '" + text + "' --es default '" + StringUtil.trim(defaultIme) + "'", 0);
+                    InjectorService.g().pushMessage("ADB_INPUT_TEXT", text);
                 } catch (Exception e) {
                     LogUtil.e(TAG, "Input throw Exception：" + e.getLocalizedMessage(), e);
                 }
@@ -477,33 +527,85 @@ public class OperationExecutor {
                 operationManagerRef.get().refreshCurrentRoot();
                 break;
             case GLOBAL_SCROLL_TO_BOTTOM:
-                int x = width / 2;
-                int y = height / 3;
-                int toBottom = height * 2 / 3;
-                LogUtil.i(TAG, "Start ADB scroll " + x + "," + y);
-                executor.executeCmdSync(MiscUtil.generateSwipeCmd(x, y, x, toBottom, 300));
-                break;
             case GLOBAL_SCROLL_TO_TOP:
-                x = width / 2;
-                y = height * 2 / 3;
-                int toTop = height / 3;
-                LogUtil.i(TAG, "Start ADB scroll " + x + "," + y);
-                executor.executeCmdSync(MiscUtil.generateSwipeCmd(x, y, x, toTop, 300));
-                break;
             case GLOBAL_SCROLL_TO_LEFT:
-                x = width / 4 * 3;
-                y = height / 2;
-                int toLeft = width / 4;
-                LogUtil.i(TAG, "Start ADB scroll " + x + "," + y);
-                executor.executeCmdSync(MiscUtil.generateSwipeCmd(x, y, toLeft, y, 300));
-                break;
             case GLOBAL_SCROLL_TO_RIGHT:
-                x = width / 4;
-                y = height / 2;
-                int toRight = width * 3 / 4;
-                LogUtil.i(TAG, "Start ADB scroll " + x + "," + y);
-                executor.executeCmdSync(MiscUtil.generateSwipeCmd(x, y, toRight, y, 300));
+                String distanceStr = method.getParam(SCROLL_DISTANCE);
+                String timeStr = method.getParam(SCROLL_TIME);
+                float distance = 0.4F;
+                int time = 300;
+                if (StringUtil.isInteger(distanceStr)) {
+                    distance = Integer.parseInt(distanceStr);
+                    if (distance <= 0 || distance >= 100) {
+                        distance = 0.4F;
+                    } else if (distance >= 90) {
+                        distance = 0.9F;
+                    } else if (distance <= 10) {
+                        distance = 0.1F;
+                    } else {
+                        distance = distance / 100F;
+                    }
+                }
+
+                if (StringUtil.isInteger(timeStr)) {
+                    time = Integer.parseInt(timeStr);
+                    if (time <= 0) {
+                        time = 300;
+                    }
+                }
+                final int fromX, fromY, toX, toY;
+                int centerX = width / 2;
+                int centerY = height / 2;
+                int heightDis = (int) (distance * height);
+                int widthDis = (int) (distance * width);
+
+                if (actionEnum == PerformActionEnum.GLOBAL_SCROLL_TO_LEFT) {
+                    fromX = centerX + widthDis / 2;
+                    toX = fromX - widthDis;
+                    toY = fromY = centerY;
+                } else if (actionEnum == PerformActionEnum.GLOBAL_SCROLL_TO_RIGHT) {
+                    fromX = centerX - widthDis / 2;
+                    toX = fromX + widthDis;
+                    toY = fromY = centerY;
+                } else if (actionEnum == PerformActionEnum.GLOBAL_SCROLL_TO_TOP) {
+                    fromY = centerY + heightDis / 2;
+                    toY = fromY - heightDis;
+                    toX = fromX = centerX;
+                } else if (actionEnum == PerformActionEnum.GLOBAL_SCROLL_TO_BOTTOM) {
+                    fromY = centerY - heightDis / 2;
+                    toY = fromY + heightDis;
+                    toX = fromX = centerX;
+                } else {
+                    return false;
+                }
+
+                LogUtil.i(TAG, "Start ADB scroll from (" + fromX + ',' + fromY + ") to (" + toX + ',' + toY + ')');
+                final int finalTime = time;
+                opContext.notifyOnFinish(new Runnable() {
+                    @Override
+                    public void run() {
+                        executor.executeScroll(fromX, fromY, toX, toY, finalTime);
+                    }
+                });
+                return true;
+            case GLOBAL_PINCH_IN:
+                int x = width / 2;
+                int y = height / 2;
+                int from = width / 2;
+                int to = width / 6;
+                LogUtil.w(TAG, "Start minitouch pinch " + x + "," + y);
+                executor.executePinch(x, y, from, to, 600);
                 break;
+            case GLOBAL_PINCH_OUT:
+                x = width / 2;
+                y = height / 2;
+                from = width / 6;
+                to = width / 2;
+                LogUtil.w(TAG, "Start minitouch pinch " + x + "," + y);
+                executor.executePinch(x, y, from, to, 600);
+                break;
+            case GLOBAL_GESTURE:
+                return performGesture(method, new Rect(0, 0, width, height), opContext);
             case HANDLE_ALERT:
                 // 等权限弹窗处理完毕
                 while (handleFlag.get() == 1) {
@@ -538,7 +640,7 @@ public class OperationExecutor {
                         int targetX = targetRec.centerX();
                         int targetY = targetRec.centerY();
                         LogUtil.i(TAG, "Start ADB click " + targetX + "," + targetY);
-                        executor.executeCmd("input tap " + targetX + " " + targetY);
+                        executor.executeClick(targetX, targetY);
                         handleFlag.set(0);
                         MiscUtil.sleep(1500);
                     } catch (Exception e) {
@@ -597,6 +699,16 @@ public class OperationExecutor {
                     }
                 });
                 return true;
+            case ASSERT_TOAST:
+                String toastMsg = InjectorService.g().getMessage(com.alipay.hulu.shared.event.constant.Constant.EVENT_TOAST_MSG, String.class);
+                if (toastMsg == null) {
+                    return false;
+                }
+
+                if (!NodeTreeUtil.assertText(toastMsg, method)) {
+                    return false;
+                }
+                break;
             case SLEEP:
                 String sleepTime = method.getParam(INPUT_TEXT_KEY);
                 if (StringUtil.isEmpty(sleepTime)) {
@@ -605,20 +717,24 @@ public class OperationExecutor {
 
                 // sleep加一个悬浮窗，防止误操作
                 try {
-                    final long count = Long.parseLong(sleepTime);
+                    long count = Long.parseLong(sleepTime);
+                    if (count < 500) {
+                        count = 500;
+                    }
                     UIOperationMessage message = new UIOperationMessage();
                     message.eventType = UIOperationMessage.TYPE_COUNT_DOWN;
                     message.putParam("time", count);
                     injectorService.pushMessage(null, message, true);
 
+                    final long finalCount = count;
                     opContext.notifyOnFinish(new Runnable() {
                         @Override
                         public void run() {
                             long startTime = System.currentTimeMillis();
                             long sleeper;
                             // 防止sleep不够
-                            while ((sleeper = System.currentTimeMillis() - startTime) < count - 10) {
-                                MiscUtil.sleep(count - sleeper);
+                            while ((sleeper = System.currentTimeMillis() - startTime) < finalCount - 10) {
+                                MiscUtil.sleep(finalCount - sleeper);
                             }
                         }
                     });
@@ -690,7 +806,6 @@ public class OperationExecutor {
                                 Bitmap bit = captureService.captureScreen(screenshot, opContext.screenWidth,
                                         opContext.screenHeight, opContext.screenWidth, opContext.screenHeight);
                                 if (bit != null) {
-                                    operationManagerRef.get().invalidRoot();
                                     return;
                                 }
                             }
@@ -698,7 +813,6 @@ public class OperationExecutor {
                             String path = FileUtils.getPathInShell(screenshot);
                             CmdTools.execAdbCmd("screencap -p \"" + path + "\"", 0);
                         }
-                        operationManagerRef.get().invalidRoot();
                     }
                 });
                 return true;
@@ -851,7 +965,7 @@ public class OperationExecutor {
                                     || StringUtil.equals("总是允许", targetInfo.getText())) {
                                 Rect node = new Rect();
                                 targetInfo.getBoundsInScreen(node);
-                                executor.executeCmd("input tap " + node.centerX() + " " + node.centerY());
+                                executor.executeClick(node.centerX(), node.centerY());
 
                                 operationManagerRef.get().invalidRoot();
                                 return;
@@ -866,7 +980,7 @@ public class OperationExecutor {
                             if (StringUtil.equals(targetInfo.getText(), "好的")) {
                                 Rect node = new Rect();
                                 targetInfo.getBoundsInScreen(node);
-                                executor.executeCmd("input tap " + node.centerX() + " " + node.centerY());
+                                executor.executeClick(node.centerX(), node.centerY());
 
                                 operationManagerRef.get().invalidRoot();
                                 return;
@@ -916,12 +1030,20 @@ public class OperationExecutor {
                     }
                     // 设置回false
                     handleFlag.set(0);
-                    operationManagerRef.get().invalidRoot();
                 }
             });
         } else {
             // 通知结束
             opContext.notifyOperationFinish();
+        }
+    }
+
+    /**
+     * 清理根节点
+     */
+    public void invalidRoot() {
+        if (operationManagerRef != null && operationManagerRef.get() != null) {
+            operationManagerRef.get().invalidRoot();
         }
     }
 

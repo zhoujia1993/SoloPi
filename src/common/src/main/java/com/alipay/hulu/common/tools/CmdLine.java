@@ -109,18 +109,27 @@ public class CmdLine implements AbstCmdLine, WrapSocket {
      * @throws Exception
      */
     public void writeCommand(String cmd) {
+        if (cmd == null) {
+            cmd = "";
+        }
         try {
             CmdTools.logcatCmd(cmdTag + cmd);
+            if (!cmd.endsWith("\n")) {
+                cmd = cmd + "\n";
+            }
             if (isAdb) {
                 stream.write(cmd);
             } else {
                 DataOutputStream stream = new DataOutputStream(suProcess.getOutputStream());
-                String content = cmd + "\n";
-                stream.writeBytes(content);
+                stream.writeBytes(cmd);
                 stream.flush();
             }
         } catch (Exception e) {
-            LogUtil.e(TAG, "Write command " + cmd + " failed", e);
+            if (cmd.length() > 100) {
+                LogUtil.e(TAG, "Write command " + cmd.substring(0, 100) + "... failed", e);
+            } else {
+                LogUtil.e(TAG, "Write command " + cmd + "... failed", e);
+            }
         }
     }
 

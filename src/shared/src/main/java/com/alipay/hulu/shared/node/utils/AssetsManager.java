@@ -30,8 +30,20 @@ import com.liulishuo.filedownloader.BaseDownloadTask;
 import com.liulishuo.filedownloader.FileDownloadSampleListener;
 import com.liulishuo.filedownloader.FileDownloader;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 
 /**
@@ -118,15 +130,16 @@ public class AssetsManager {
                     .setPath(targetFile.getAbsolutePath())
                     .setCallbackProgressTimes(50)
                     .setAutoRetryTimes(3)
+//                    .addHeader("Referer", "https://github.com/alipay/SoloPi/")
                     .setListener(new FileDownloadSampleListener() {
                         @Override
                         protected void completed(BaseDownloadTask task) {
                             super.completed(task);
                             if (status != null) {
-                                status.currentStatus(100, 100, "资源下载完毕", true);
+                                status.currentStatus(100, 100, StringUtil.getString(R.string.assets_downloaded), true);
                             }
-                            finishFileDownload.set(true);
                             success.set(true);
+                            finishFileDownload.set(true);
                         }
 
                         @Override
@@ -137,7 +150,7 @@ public class AssetsManager {
 
                             if (status != null) {
                                 status.currentStatus(downloadedKB, totalKB,
-                                        String.format("资源下载中\n%dKB/%dKB", downloadedKB, totalKB), true);
+                                        String.format(StringUtil.getString(R.string.downloading__assets), downloadedKB, totalKB), true);
                             }
                         }
 
@@ -155,7 +168,7 @@ public class AssetsManager {
                             if (status != null) {
                                 long downloadedKB = 0;
                                 long totalKB = 100;
-                                status.currentStatus((int) downloadedKB, (int) totalKB, "资源准备下载", true);
+                                status.currentStatus((int) downloadedKB, (int) totalKB, StringUtil.getString(R.string.assets_to_download), true);
                             }
                         }
 
@@ -167,8 +180,9 @@ public class AssetsManager {
 
                             if (status != null) {
                                 status.currentStatus((int) downloadedKB, (int) totalKB,
-                                        "资源下载失败，" + e.getMessage(), false);
+                                        StringUtil.getString(R.string.assets_download_fail) + e.getMessage(), false);
                             }
+                            LogUtil.e(TAG, "Download failed: " + e.getMessage(), e);
                             finishFileDownload.set(true);
                         }
                     }).start();
@@ -200,4 +214,97 @@ public class AssetsManager {
 
         return targetFile;
     }
+
+    /**
+     * 获取asset资源文件
+     * @param assetInfo
+     * @param status
+     * @return
+     */
+    public static File getAssetFileWithOkHttp(Pair<String, String> assetInfo, final PrepareUtil.PrepareStatus status, boolean overwrite) {
+        final long startTime = System.currentTimeMillis();
+        String path = assetInfo.first;
+
+        File targetFile = new File(FileUtils.getSubDir("download"), path);
+
+        // overwrite重新下载
+        if (overwrite) {
+            if (targetFile.exists()) {
+                targetFile.delete();
+            }
+        }
+
+        // 不存在需要重新下载
+        if (!targetFile.exists()) {
+            final String url = assetInfo.second;
+            boolean result = download(url, targetFile);
+
+            if (!result || !targetFile.exists()) {
+                LogUtil.e(TAG, "Download file not exists");
+                return null;
+            }
+        } else {
+            // 修改下操作时间，防止被回收
+            targetFile.setLastModified(System.currentTimeMillis());
+        }
+
+        LogUtil.w(TAG, "Get file costs: " + (System.currentTimeMillis() - startTime));
+
+        return targetFile;
+    }
+
+    /**
+     * 下载文件
+     * @param url          下载连接
+     * @param targetFile   目标文件
+     */
+    public static boolean download(final String url, final File targetFile) {
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
+
+        OkHttpClient client = new OkHttpClient();
+
+        Response response;
+        try {
+            response = client.newCall(request).execute();
+        } catch (IOException e) {
+            LogUtil.e(TAG,"Open connection fail", e);
+            return false;
+        }
+
+        InputStream is = null;
+        byte[] buf = new byte[8192];
+        int len;
+        BufferedOutputStream buffer = null;
+
+        //储存下载文件的目录
+        try {
+            is = response.body().byteStream();
+            buffer = new BufferedOutputStream(new FileOutputStream(targetFile));
+            while ((len = is.read(buf)) != -1) {
+                buffer.write(buf, 0, len);
+            }
+            buffer.flush();
+            //下载完成
+            return true;
+        } catch (Exception e) {
+            LogUtil.e(TAG, "Download fail", e);
+            return false;
+        } finally {
+
+            try {
+                if (is != null) {
+                    is.close();
+                }
+                if (buffer != null) {
+                    buffer.close();
+                }
+            } catch (IOException e) {
+
+            }
+
+        }
+    }
+
 }

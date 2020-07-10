@@ -75,7 +75,7 @@ public class OperationNodeLocator {
     public static final int FLAG_PARENT = 0x00010000;
 
     /**
-     * 通过类名查找，目前仅对WebView才用这个
+     * 通过类名查找，目前仅对EditText才用这个
      */
     public static final int FLAG_CLASS_NAME = 0x00100000;
 
@@ -96,10 +96,15 @@ public class OperationNodeLocator {
 
         // 对于Accessibility Node
         if (AccessibilityNodeTree.class.getSimpleName().equals(operationNode.getNodeType())) {
-            return OperationNodeLocator.findAbstractNode(root, operationNode,
-                    OperationNodeLocator.FLAG_XPATH | OperationNodeLocator.FLAG_RESOURCE_ID |
-                            OperationNodeLocator.FLAG_SELF | OperationNodeLocator.FLAG_EXTRA |
-                            OperationNodeLocator.FLAG_TEXT | OperationNodeLocator.FLAG_CHILDNODE);
+            int flags = OperationNodeLocator.FLAG_XPATH | OperationNodeLocator.FLAG_RESOURCE_ID |
+                    OperationNodeLocator.FLAG_SELF | OperationNodeLocator.FLAG_EXTRA |
+                    OperationNodeLocator.FLAG_TEXT | OperationNodeLocator.FLAG_CHILDNODE;
+            // EditText可以通过ClassName查找
+            if (StringUtil.equals(operationNode.getClassName(), "android.widget.EditText")) {
+                flags |= FLAG_CLASS_NAME;
+            }
+
+            return OperationNodeLocator.findAbstractNode(root, operationNode, flags);
         } else if (CaptureTree.class.getSimpleName().equals(operationNode.getNodeType())) {
             if (!(root instanceof CaptureTree)) {
                 return null;
@@ -280,7 +285,7 @@ public class OperationNodeLocator {
                     public boolean isEqual(AbstractNodeTree item) {
 
                         // 包含子节点内容相同，resourceId相同，类名相同
-                        boolean findFlag = StringUtil.equals(item.getClassName(), node.getClassName())
+                        boolean findFlag = StringUtil.equalsOrMatch(node.getClassName(), item.getClassName())
                                 && StringUtil.equalsOrLeftBlank(node.getText(), item.getText())
                                 && StringUtil.equalsOrLeftBlank(node.getDescription(), item.getDescription())
                                 && StringUtil.equalsOrLeftBlank(node.getResourceId(), item.getResourceId());
@@ -297,7 +302,7 @@ public class OperationNodeLocator {
                                 }
                             }
 
-                            findFlag = StringUtil.equals(tmpNode.getClassName(), operationNode.getClassName());
+                            findFlag = StringUtil.equalsOrMatch(operationNode.getClassName(), tmpNode.getClassName());
                         }
 
                         return findFlag;
@@ -314,7 +319,7 @@ public class OperationNodeLocator {
                         }
 
                         // 每一个子节点都辅助定位下
-                        if (StringUtil.equals(current.getClassName(), operationNode.getClassName())) {
+                        if (StringUtil.equalsOrMatch(operationNode.getClassName(), current.getClassName())) {
                             findResult.addItem(current, 2);
                             findCount ++;
                         }
@@ -334,7 +339,7 @@ public class OperationNodeLocator {
                     return StringUtil.equalsOrLeftBlank(operationNode.getText(), item.getText()) &&
                             StringUtil.equalsOrLeftBlank(operationNode.getDescription(), item.getDescription())
                             && StringUtil.equalsOrLeftBlank(operationNode.getResourceId(), item.getResourceId()) &&
-                            StringUtil.equalsOrLeftBlank(operationNode.getClassName(), item.getClassName());
+                            StringUtil.equalsOrMatch(operationNode.getClassName(), item.getClassName());
                 }
             });
 
